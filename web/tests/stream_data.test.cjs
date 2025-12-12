@@ -1962,49 +1962,84 @@ test("options for dropdown widget", () => {
 const access_cases = [
     {
         desc: "private + subscribed user",
-        stream: {subscribed: true, invite_only: true, is_web_public: false, history_public_to_subscribers: false},
+        stream: {
+            subscribed: true,
+            invite_only: true,
+            is_web_public: false,
+            history_public_to_subscribers: false,
+        },
         user: {is_admin: false, is_guest: false},
         spectator: false,
         expect: {meta: true, content: true, preview: false},
     },
     {
         desc: "web-public stream (normal user)",
-        stream: {subscribed: false, invite_only: false, is_web_public: true, history_public_to_subscribers: true},
+        stream: {
+            subscribed: false,
+            invite_only: false,
+            is_web_public: true,
+            history_public_to_subscribers: true,
+        },
         user: {is_admin: false, is_guest: false},
         spectator: false,
         expect: {meta: true, content: true, preview: true},
     },
     {
         desc: "web-public spectator",
-        stream: {subscribed: false, invite_only: false, is_web_public: true, history_public_to_subscribers: true},
+        stream: {
+            subscribed: false,
+            invite_only: false,
+            is_web_public: true,
+            history_public_to_subscribers: true,
+        },
         user: {is_admin: false, is_guest: false},
         spectator: true,
         expect: {meta: true, content: true, preview: true},
     },
     {
         desc: "non-web-public spectator denied",
-        stream: {subscribed: false, invite_only: false, is_web_public: false, history_public_to_subscribers: true},
+        stream: {
+            subscribed: false,
+            invite_only: false,
+            is_web_public: false,
+            history_public_to_subscribers: true,
+        },
         user: {is_admin: false, is_guest: false},
         spectator: true,
         expect: {meta: false, content: false, preview: false},
     },
     {
         desc: "private unsubscribed user denied",
-        stream: {subscribed: false, invite_only: true, is_web_public: false, history_public_to_subscribers: false},
+        stream: {
+            subscribed: false,
+            invite_only: true,
+            is_web_public: false,
+            history_public_to_subscribers: false,
+        },
         user: {is_admin: false, is_guest: false},
         spectator: false,
         expect: {meta: false, content: false, preview: false},
     },
     {
         desc: "realm admin metadata allowed but content denied",
-        stream: {subscribed: false, invite_only: true, is_web_public: false, history_public_to_subscribers: true},
+        stream: {
+            subscribed: false,
+            invite_only: true,
+            is_web_public: false,
+            history_public_to_subscribers: true,
+        },
         user: {is_admin: true, is_guest: false},
         spectator: false,
         expect: {meta: true, content: false, preview: false},
     },
     {
         desc: "private subscribed + history_public allows preview",
-        stream: {subscribed: true, invite_only: true, is_web_public: false, history_public_to_subscribers: true},
+        stream: {
+            subscribed: true,
+            invite_only: true,
+            is_web_public: false,
+            history_public_to_subscribers: true,
+        },
         user: {is_admin: false, is_guest: false},
         spectator: false,
         expect: {meta: true, content: true, preview: true},
@@ -2040,11 +2075,7 @@ run_test("stream access table-driven test", ({override}) => {
             `${tc.desc}: has_content_access`,
         );
 
-        assert.equal(
-            stream_data.can_preview(stream),
-            tc.expect.preview,
-            `${tc.desc}: can_preview`,
-        );
+        assert.equal(stream_data.can_preview(stream), tc.expect.preview, `${tc.desc}: can_preview`);
     }
 
     // Reset so future tests are unaffected
@@ -2105,4 +2136,89 @@ run_test("is_empty_topic_only_channel", ({override}) => {
     override(current_user, "is_admin", true);
     assert.equal(stream_data.is_empty_topic_only_channel(social.stream_id), true);
     assert.equal(stream_data.is_empty_topic_only_channel(scotland.stream_id), false);
+});
+
+run_test("can_toggle_subscription", ({override}) => {
+    people.init();
+    people.add_active_user(me);
+    people.initialize_current_user(me.user_id);
+    override(current_user, "user_id", me.user_id);
+    override(current_user, "is_guest", false);
+    override(current_user, "is_admin", false);
+
+    const sub = {
+        subscribed: false,
+        invite_only: false,
+        is_web_public: false,
+        stream_id: 999,
+        name: "toggle_test",
+        can_add_subscribers_group: nobody_group.id,
+        can_subscribe_group: nobody_group.id,
+        can_administer_channel_group: nobody_group.id,
+    };
+
+    page_params.is_spectator = true;
+    assert.equal(stream_data.can_toggle_subscription(sub), false);
+    page_params.is_spectator = false;
+
+    sub.subscribed = true;
+    assert.equal(stream_data.can_toggle_subscription(sub), true);
+
+    sub.subscribed = false;
+    assert.equal(stream_data.can_toggle_subscription(sub), true);
+});
+
+run_test("can_access_stream_email", ({override}) => {
+    people.init();
+    people.add_active_user(me);
+    people.initialize_current_user(me.user_id);
+    override(current_user, "user_id", me.user_id);
+    override(current_user, "is_guest", false);
+    override(current_user, "is_admin", false);
+    page_params.is_spectator = false;
+
+    bot_data.get_all_bots_for_current_user = () => [];
+
+    const sub = {
+        subscribed: true,
+        stream_id: 888,
+        name: "email_test",
+        can_send_message_group: everyone_group.id,
+        is_archived: false,
+    };
+
+    assert.equal(stream_data.can_access_stream_email(sub), true);
+
+    sub.can_send_message_group = nobody_group.id;
+    assert.equal(stream_data.can_access_stream_email(sub), false);
+});
+
+run_test("can_post_messages_in_stream with different sender_id", ({override}) => {
+    people.init();
+    people.add_active_user(me);
+    people.add_active_user(test_user);
+    people.initialize_current_user(me.user_id);
+    override(current_user, "user_id", me.user_id);
+    override(current_user, "is_guest", false);
+    override(current_user, "is_admin", false);
+    page_params.is_spectator = false;
+
+    const sub = {
+        subscribed: true,
+        stream_id: 777,
+        name: "sender_test",
+        can_send_message_group: everyone_group.id,
+        is_archived: false,
+    };
+
+    assert.equal(stream_data.can_post_messages_in_stream(sub, test_user.user_id), true);
+
+    sub.can_send_message_group = admins_group.id;
+    assert.equal(stream_data.can_post_messages_in_stream(sub, test_user.user_id), false);
+});
+
+run_test("rewire_has_content_access", ({override_rewire}) => {
+    const mock_has_content_access = () => true;
+    override_rewire(stream_data, "has_content_access", mock_has_content_access);
+    assert.equal(stream_data.has_content_access({}), true);
 });
